@@ -179,3 +179,251 @@ Optional bonus:
 - add authentication for SSE or HTTP transport
 - support both SQLite and PostgreSQL with the same MCP surface
 - add richer output annotations or pagination
+
+## Reference Implementation
+
+This repository includes a complete SQLite + FastMCP implementation in `implementation/`.
+
+### Project Layout
+
+```text
+implementation/
+  db.py                 # SQLite adapter, validation, safe query building
+  init_db.py            # reproducible schema and seed data
+  mcp_server.py         # FastMCP tools and resources
+  verify_server.py      # repeatable smoke verification
+  requirements.txt      # uv-installed dependencies
+  tests/
+    test_db.py          # automated adapter tests
+```
+
+The database file is created at `implementation/lab.db`.
+
+### Setup With uv
+
+Install `uv` first if it is not already available:
+
+```bash
+pip install uv
+```
+
+Create a virtual environment at the repository root:
+
+```bash
+uv venv .venv
+```
+
+Install dependencies:
+
+```bash
+uv pip install --no-cache -r implementation/requirements.txt
+```
+
+You can run all commands through `uv run` even if your shell has not activated `.venv`.
+
+### Initialize The Database
+
+```bash
+uv run --no-cache python implementation/init_db.py
+```
+
+This command recreates the SQLite database with three tables:
+
+- `students(id, name, cohort, email, created_at)`
+- `courses(id, code, title, credits)`
+- `enrollments(id, student_id, course_id, score, status)`
+
+### Run Tests And Verification
+
+Run automated tests:
+
+```bash
+uv run --no-cache pytest implementation/tests --basetemp .pytest-tmp -p no:cacheprovider
+```
+
+Run the repeatable smoke verification:
+
+```bash
+uv run --no-cache python implementation/verify_server.py
+```
+
+Run MCP-level verification:
+
+```bash
+uv run --no-cache python implementation/verify_mcp.py
+```
+
+The verification scripts check:
+
+- database initialization
+- schema inspection
+- valid `search`, `insert`, and `aggregate` calls
+- clear rejection of an invalid table
+- MCP discovery for tools, resources, and resource templates
+- MCP calls through a real FastMCP client
+
+### Run The MCP Server
+
+```bash
+uv run --no-cache python implementation/mcp_server.py
+```
+
+The server uses stdio transport by default.
+
+### Tools
+
+The server exposes exactly three MCP tools:
+
+- `search(table, filters=None, columns=None, limit=20, offset=0, order_by=None, descending=False)`
+- `insert(table, values)`
+- `aggregate(table, metric, column=None, filters=None, group_by=None)`
+
+Supported filter operators:
+
+- `eq`
+- `ne`
+- `gt`
+- `gte`
+- `lt`
+- `lte`
+- `contains`
+- `in`
+
+Supported aggregate metrics:
+
+- `count`
+- `avg`
+- `sum`
+- `min`
+- `max`
+
+Example tool payloads:
+
+```json
+{
+  "table": "students",
+  "filters": {
+    "cohort": "A1"
+  },
+  "order_by": "name"
+}
+```
+
+```json
+{
+  "table": "students",
+  "values": {
+    "name": "Lan Ho",
+    "cohort": "A1",
+    "email": "lan.ho@example.edu"
+  }
+}
+```
+
+```json
+{
+  "table": "enrollments",
+  "metric": "avg",
+  "column": "score",
+  "group_by": "status"
+}
+```
+
+### Resources
+
+The server exposes database schema context as MCP resources:
+
+- `schema://database`
+- `schema://table/{table_name}`
+
+Examples:
+
+- `schema://database`
+- `schema://table/students`
+
+### Safety Behavior
+
+The implementation rejects:
+
+- unknown table names
+- unknown column names
+- unsupported filter operators
+- empty inserts
+- invalid aggregate metrics
+- aggregate calls missing required columns
+- invalid `limit`, `offset`, `order_by`, or `group_by`
+
+SQL values are passed through SQLite parameters. Table and column identifiers are only used after validation against the live database schema.
+
+## MCP Inspector
+
+Run Inspector from the repository root:
+
+```bash
+npx -y @modelcontextprotocol/inspector uv run --no-cache python implementation/mcp_server.py
+```
+
+Inspector checklist:
+
+- `search`, `insert`, and `aggregate` appear in the tools list
+- `schema://database` appears in resources
+- `schema://table/{table_name}` appears as a resource template
+- valid tool calls succeed
+- invalid tool calls return clear errors
+
+## Codex Client Setup
+
+Codex is the primary client for this lab submission.
+
+Add this MCP server to `~/.codex/config.toml`. Replace the path if your checkout is in a different location.
+
+```toml
+[mcp_servers.sqlite_lab]
+command = "uv"
+args = ["run", "--no-cache", "python", "D:/AI/26AI/Day26-Track3-MCP-tool-integration/implementation/mcp_server.py"]
+```
+
+Recommended project instruction in `AGENTS.md`:
+
+```md
+Use the `sqlite_lab` MCP server whenever the task needs database schema context or SQL-backed record lookup.
+```
+
+Suggested Codex verification prompts:
+
+```text
+Use the sqlite_lab MCP server and read schema://database.
+```
+
+```text
+Use the sqlite_lab MCP server to search students in cohort A1.
+```
+
+```text
+Use the sqlite_lab MCP server to compute average enrollment score grouped by status.
+```
+
+```text
+Use the sqlite_lab MCP server to search a missing table and show the error.
+```
+
+## Two Minute Demo Script
+
+1. Show `implementation/` structure and `requirements.txt`.
+2. Run `uv run --no-cache python implementation/init_db.py`.
+3. Run `uv run --no-cache pytest implementation/tests --basetemp .pytest-tmp -p no:cacheprovider`.
+4. Run `uv run --no-cache python implementation/verify_server.py`.
+5. Run `uv run --no-cache python implementation/verify_mcp.py` and show discovered tools/resources.
+6. Open Inspector and show the three tools plus schema resources.
+7. Call valid `search`, `insert`, and `aggregate`.
+8. Call an invalid table and show the clear error.
+9. Show Codex configured with `sqlite_lab` and using the server.
+
+## Demo Evidence Checklist
+
+Include at least one screenshot or short clip showing:
+
+- Inspector or Codex discovering `search`, `insert`, and `aggregate`.
+- Inspector or Codex reading `schema://database`.
+- A successful `search` or `aggregate` call.
+- A failing call against `missing_table` with the clear error.

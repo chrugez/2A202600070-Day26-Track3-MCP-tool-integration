@@ -1,0 +1,11 @@
+.venv/
+.uv-cache/
+.pytest_cache/
+.pytest-tmp/
+implementation/.pytest-cache/
+implementation/.pytest-tmp/
+implementation/pytest-cache-files-*/
+implementation/__pycache__/
+implementation/tests/__pycache__/
+implementation/lab.db
+implementation/lab.db-*
